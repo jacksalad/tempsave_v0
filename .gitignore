@@ -1,0 +1,6 @@
+# 忽略所有 .log 文件
+*.log
+
+# 忽略特定文件夹
+src/assets/uploads
+.fleet
