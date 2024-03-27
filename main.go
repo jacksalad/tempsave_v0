@@ -176,7 +176,7 @@ func main() {
 	})
 
 	log.Printf("【Start】 localhost:%s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		log.Fatalf("Failed to start HTTP server: %v", err)
 	}
 }
