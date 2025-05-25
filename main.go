@@ -1,17 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"sync"
-	"encoding/json"
-	"io/ioutil"
-	"fmt"
-	"io"
-	"time"
-	"strconv"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
 )
 
 const (
@@ -82,6 +83,10 @@ func main() {
 		for _, file := range files {
 			fileNames = append(fileNames, FileIfo{file.Name(), file.ModTime().Format(timeLayout), SizeFormat(file.Size())})
 		}
+		// 按修改时间排序，最新的在前
+		sort.Slice(fileNames, func(i, j int) bool {
+			return fileNames[i].Time > fileNames[j].Time
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(fileNames)

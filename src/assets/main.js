@@ -39,20 +39,30 @@ $(document).ready(function () {
 
     // 当文件拖拽至矩形区域时
     $('#drop-area').on('drop', function (e) {
-        $("#progresscol").show();
-        e.preventDefault();
-        var files = e.originalEvent.dataTransfer.files; // 获取拖拽的文件列表
-        var file = files[0]; // 获取文件
-        var chunkSize = 1024 * 1024; // 切片大小，这里以1MB为例
-        var chunks = Math.ceil(file.size / chunkSize); // 计算需要切成多少片
-        var currentChunk = 0;
-        uploadChunk(file, chunkSize, chunks, currentChunk); // 开始上传
+    	$("#progresscol").show();
+    	e.preventDefault();
+    	var files = e.originalEvent.dataTransfer.files; // 获取拖拽的文件列表
+    	var chunkSize = 1024 * 1024; // 切片大小，这里以1MB为例
+    	
+    	// 创建上传队列
+    	var uploadQueue = [];
+    	for (var i = 0; i < files.length; i++) {
+    		var file = files[i];
+    		uploadQueue.push({
+    			file: file,
+    			chunks: Math.ceil(file.size / chunkSize),
+    			currentChunk: 0,
+    			progress: 0
+    		});
+    	}
+    	
+    	// 开始处理上传队列
+    	processUploadQueue(uploadQueue, chunkSize);
     });
 
     // 监听文件选择事件
     $('#fileInput').on('change', function () {
         $('#fileInput').show();
-
     });
 
     // 点击上传按钮
@@ -60,61 +70,88 @@ $(document).ready(function () {
         $("#progresscol").show();
         e.preventDefault();
         var files = $('#fileInput')[0].files;
-        var file = files[0]; // 获取文件
         var chunkSize = 1024 * 1024; // 切片大小，这里以1MB为例
-        var chunks = Math.ceil(file.size / chunkSize); // 计算需要切成多少片
-        var currentChunk = 0;
-        uploadChunk(file, chunkSize, chunks, currentChunk);
+        
+        // 创建上传队列
+        var uploadQueue = [];
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            uploadQueue.push({
+                file: file,
+                chunks: Math.ceil(file.size / chunkSize),
+                currentChunk: 0,
+                progress: 0
+            });
+        }
+        
+        // 开始处理上传队列
+        processUploadQueue(uploadQueue, chunkSize);
     });
 
+    // 处理上传队列
+    function processUploadQueue(queue, chunkSize) {
+    	if (queue.length === 0) {
+    		setTimeout(refreshFileList, 2000);
+    		setTimeout(() => {
+    			$('#progresscol').hide();
+    			$('#uploadProgress').css('width', '0%').text('0%');
+    		}, 1000);
+    		return;
+    	}
+    	
+    	var item = queue[0];
+    	uploadChunk(item, queue, chunkSize);
+    }
+   
     // 分块上传
-    function uploadChunk(file, chunkSize, chunks, currentChunk) {
-        var start = currentChunk * chunkSize;
-        var end = Math.min(file.size, start + chunkSize);
-        var chunk = file.slice(start, end); // 切片
-
-        var formData = new FormData();
-        formData.append('file', chunk);
-        formData.append('fileName', file.name);
-        formData.append('chunk', currentChunk);
-        formData.append('chunks', chunks);
-
-        $.ajax({
-            url: '/upload', // 服务器端的上传处理文件地址
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            xhr: function () {
-                var xhr = $.ajaxSettings.xhr();
-                if (xhr.upload) {
-                    xhr.upload.addEventListener('progress', function (e) {
-                        if (e.lengthComputable) {
-                            var percentComplete = ((e.loaded / e.total) + currentChunk) / chunks;
-                            $('#uploadProgress').css('width', parseInt(percentComplete * 100) + '%').text(parseInt(percentComplete * 100) + '%');
-                        }
-                    }, false);
-                }
-                return xhr;
-            },
-            success: function (response) {
-                currentChunk++;
-                if (currentChunk < chunks) {
-                    uploadChunk(file, chunkSize, chunks, currentChunk); // 递归上传下一片
-                } else {
-                    setTimeout(refreshFileList, 2000);
-                    setTimeout(() => {
-                        $('#fileInput').hide();
-                        $('#progresscol').hide();
-                        $('#uploadProgress').css('width', '0%').text('0%');
-                    }, 1000);
-                    console.log('上传完成');
-                }
-            },
-            error: function () {
-                console.error('上传失败');
-            }
-        });
+    function uploadChunk(item, queue, chunkSize) {
+    	var file = item.file;
+    	var start = item.currentChunk * chunkSize;
+    	var end = Math.min(file.size, start + chunkSize);
+    	var chunk = file.slice(start, end);
+   
+    	var formData = new FormData();
+    	formData.append('file', chunk);
+    	formData.append('fileName', file.name);
+    	formData.append('chunk', item.currentChunk);
+    	formData.append('chunks', item.chunks);
+   
+    	$.ajax({
+    		url: '/upload',
+    		type: 'POST',
+    		data: formData,
+    		processData: false,
+    		contentType: false,
+    		xhr: function () {
+    			var xhr = $.ajaxSettings.xhr();
+    			if (xhr.upload) {
+    				xhr.upload.addEventListener('progress', function (e) {
+    					if (e.lengthComputable) {
+    						var chunkProgress = (e.loaded / e.total);
+    						var fileProgress = (item.currentChunk + chunkProgress) / item.chunks;
+    						var totalProgress = (queue.reduce((sum, qItem) => sum + qItem.progress, 0) + fileProgress) / queue.length;
+    						$('#uploadProgress').css('width', parseInt(totalProgress * 100) + '%').text(parseInt(totalProgress * 100) + '%');
+    					}
+    				}, false);
+    			}
+    			return xhr;
+    		},
+    		success: function (response) {
+    			item.currentChunk++;
+    			item.progress = item.currentChunk / item.chunks;
+    			if (item.currentChunk < item.chunks) {
+    				uploadChunk(item, queue, chunkSize);
+    			} else {
+    				queue.shift();
+    				processUploadQueue(queue, chunkSize);
+    			}
+    		},
+    		error: function () {
+    			console.error('上传失败');
+    			queue.shift();
+    			processUploadQueue(queue, chunkSize);
+    		}
+    	});
     }
 
     refreshFileList();
