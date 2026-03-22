@@ -20,7 +20,7 @@ $(document).ready(function () {
             data.forEach(function (file) {
                 $('#fileList').append(`
                 <tr class="table-light">
-                    <td class="myalign"><a href="./uploads/${file.name}" target="blank">${file.name}</a></td>
+                    <td class="myalign"><a href="/uploads/${file.name}" target="_blank">${file.name}</a></td>
                     <td class="myalign">${file.time}</td>
                     <td class="myalign">${file.size}</td>
                     <td class="myalign"><button fname="${file.name}" type="button" class="btn btn-outline-danger btn-sm delbtn">删除</button></td>
