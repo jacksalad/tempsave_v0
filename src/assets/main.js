@@ -1,29 +1,32 @@
 $(document).ready(function () {
+    // 使用事件委托处理删除按钮点击（性能优化：避免重复绑定）
+    $('#fileList').on('click', '.delbtn', function () {
+        var fileName = $(this).attr("fname");
+        $.ajax({
+            url: '/del?name=' + fileName,
+            type: 'GET',
+            processData: false,
+            contentType: false,
+            success: function (data) {
+                refreshFileList();
+            }
+        });
+    });
+
     // 刷新上传的文件列表
     function refreshFileList() {
-        $.get('/files', function (data) {
+        $.get('/files?limit=all', function (data) {
             $('#fileList').children().slice(1).remove();
             data.forEach(function (file) {
                 $('#fileList').append(`
                 <tr class="table-light">
-                    <td class="myalign"><a href="./assets/uploads/${file.name}" target="blank">${file.name}</a></td>
+                    <td class="myalign"><a href="./uploads/${file.name}" target="blank">${file.name}</a></td>
                     <td class="myalign">${file.time}</td>
                     <td class="myalign">${file.size}</td>
                     <td class="myalign"><button fname="${file.name}" type="button" class="btn btn-outline-danger btn-sm delbtn">删除</button></td>
                 </tr>
                 `)
             });
-            $(".delbtn").click(function () {
-                $.ajax({
-                    url: '/del?name=' + $(this).attr("fname"),
-                    type: 'GET',
-                    processData: false,
-                    contentType: false,
-                    success: function (data) {
-                        refreshFileList();
-                    }
-                });
-            })
         });
     }
 
@@ -100,7 +103,28 @@ $(document).ready(function () {
     	}
     	
     	var item = queue[0];
-    	uploadChunk(item, queue, chunkSize);
+    	
+    	// 第一个文件上传前检查空间
+    	if (item.currentChunk === 0) {
+    		$.get('/check-space', { size: item.file.size, name: item.file.name }, function(res) {
+    			if (res.ok) {
+    				uploadChunk(item, queue, chunkSize);
+    			} else {
+    				// 空间不足，显示错误提示
+    				alert('上传失败：' + res.message);
+    				console.error('空间不足:', res.message);
+    				// 跳过当前文件，继续处理队列
+    				queue.shift();
+    				processUploadQueue(queue, chunkSize);
+    			}
+    		}).fail(function() {
+    			alert('无法检查存储空间，请稍后重试');
+    			queue.shift();
+    			processUploadQueue(queue, chunkSize);
+    		});
+    	} else {
+    		uploadChunk(item, queue, chunkSize);
+    	}
     }
    
     // 分块上传
@@ -129,7 +153,9 @@ $(document).ready(function () {
     					if (e.lengthComputable) {
     						var chunkProgress = (e.loaded / e.total);
     						var fileProgress = (item.currentChunk + chunkProgress) / item.chunks;
-    						var totalProgress = (queue.reduce((sum, qItem) => sum + qItem.progress, 0) + fileProgress) / queue.length;
+    						// 使用 slice(1) 排除当前正在上传的文件，避免进度重复计算
+    						var completedProgress = queue.slice(1).reduce((sum, qItem) => sum + qItem.progress, 0);
+    						var totalProgress = (completedProgress + fileProgress) / queue.length;
     						$('#uploadProgress').css('width', parseInt(totalProgress * 100) + '%').text(parseInt(totalProgress * 100) + '%');
     					}
     				}, false);

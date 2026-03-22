@@ -1,8 +1,36 @@
-# 忽略所有 .log 文件
-*.log
+# Go 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 tempsave
-tempsave.exe
 
-# 忽略特定文件夹
-src/assets/uploads
-.fleet
+# Go 测试产物
+*.test
+*.out
+coverage.txt
+
+# Go 模块缓存
+go.sum
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 日志文件
+app.log
+*.log
+
+# 上传目录（用户上传的文件不应纳入版本控制）
+uploads/
+
+# 临时文件
+*.tmp
+*.temp
+tmp/
+temp/
+bk/
