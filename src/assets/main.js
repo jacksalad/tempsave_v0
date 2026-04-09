@@ -3,29 +3,40 @@ $(document).ready(function () {
     $('#fileList').on('click', '.delbtn', function () {
         var fileName = $(this).attr("fname");
         $.ajax({
-            url: '/del?name=' + fileName,
-            type: 'GET',
-            processData: false,
-            contentType: false,
+            url: '/del',
+            type: 'POST',
+            data: { name: fileName },
             success: function (data) {
                 refreshFileList();
             }
         });
     });
 
-    // 刷新上传的文件列表
+    // 刷新上传的文件列表（P3 修复：使用 DOM API 防 XSS）
     function refreshFileList() {
         $.get('/files?limit=all', function (data) {
-            $('#fileList').children().slice(1).remove();
+            var $list = $('#fileList');
+            $list.children().slice(1).remove();
             data.forEach(function (file) {
-                $('#fileList').append(`
-                <tr class="table-light">
-                    <td class="myalign"><a href="/uploads/${file.name}" target="_blank">${file.name}</a></td>
-                    <td class="myalign">${file.time}</td>
-                    <td class="myalign">${file.size}</td>
-                    <td class="myalign"><button fname="${file.name}" type="button" class="btn btn-outline-danger btn-sm delbtn">删除</button></td>
-                </tr>
-                `)
+                var $row = $('<tr>').addClass('table-light');
+                // 文件名链接（使用 text() 防 XSS）
+                var $nameTd = $('<td>').addClass('myalign');
+                $('<a>').attr('href', '/uploads/' + encodeURIComponent(file.name))
+                    .attr('target', '_blank')
+                    .text(file.name)
+                    .appendTo($nameTd);
+                // 时间和大小（使用 text() 防 XSS）
+                var $timeTd = $('<td>').addClass('myalign').text(file.time);
+                var $sizeTd = $('<td>').addClass('myalign').text(file.size);
+                // 删除按钮
+                var $delTd = $('<td>').addClass('myalign');
+                $('<button>').attr({
+                    'fname': file.name,
+                    'type': 'button'
+                }).addClass('btn btn-outline-danger btn-sm delbtn').text('删除').appendTo($delTd);
+
+                $row.append($nameTd, $timeTd, $sizeTd, $delTd);
+                $list.append($row);
             });
         });
     }
@@ -44,10 +55,9 @@ $(document).ready(function () {
     $('#drop-area').on('drop', function (e) {
     	$("#progresscol").show();
     	e.preventDefault();
-    	var files = e.originalEvent.dataTransfer.files; // 获取拖拽的文件列表
-    	var chunkSize = 1024 * 1024; // 切片大小，这里以1MB为例
-    	
-    	// 创建上传队列
+    	var files = e.originalEvent.dataTransfer.files;
+    	var chunkSize = 1024 * 1024;
+
     	var uploadQueue = [];
     	for (var i = 0; i < files.length; i++) {
     		var file = files[i];
@@ -58,8 +68,7 @@ $(document).ready(function () {
     			progress: 0
     		});
     	}
-    	
-    	// 开始处理上传队列
+
     	processUploadQueue(uploadQueue, chunkSize);
     });
 
@@ -73,9 +82,8 @@ $(document).ready(function () {
         $("#progresscol").show();
         e.preventDefault();
         var files = $('#fileInput')[0].files;
-        var chunkSize = 1024 * 1024; // 切片大小，这里以1MB为例
-        
-        // 创建上传队列
+        var chunkSize = 1024 * 1024;
+
         var uploadQueue = [];
         for (var i = 0; i < files.length; i++) {
             var file = files[i];
@@ -86,8 +94,7 @@ $(document).ready(function () {
                 progress: 0
             });
         }
-        
-        // 开始处理上传队列
+
         processUploadQueue(uploadQueue, chunkSize);
     });
 
@@ -101,19 +108,16 @@ $(document).ready(function () {
     		}, 1000);
     		return;
     	}
-    	
+
     	var item = queue[0];
-    	
-    	// 第一个文件上传前检查空间
+
     	if (item.currentChunk === 0) {
     		$.get('/check-space', { size: item.file.size, name: item.file.name }, function(res) {
     			if (res.ok) {
     				uploadChunk(item, queue, chunkSize);
     			} else {
-    				// 空间不足，显示错误提示
     				alert('上传失败：' + res.message);
     				console.error('空间不足:', res.message);
-    				// 跳过当前文件，继续处理队列
     				queue.shift();
     				processUploadQueue(queue, chunkSize);
     			}
@@ -126,20 +130,20 @@ $(document).ready(function () {
     		uploadChunk(item, queue, chunkSize);
     	}
     }
-   
+
     // 分块上传
     function uploadChunk(item, queue, chunkSize) {
     	var file = item.file;
     	var start = item.currentChunk * chunkSize;
     	var end = Math.min(file.size, start + chunkSize);
     	var chunk = file.slice(start, end);
-   
+
     	var formData = new FormData();
     	formData.append('file', chunk);
     	formData.append('fileName', file.name);
     	formData.append('chunk', item.currentChunk);
     	formData.append('chunks', item.chunks);
-   
+
     	$.ajax({
     		url: '/upload',
     		type: 'POST',
@@ -153,7 +157,6 @@ $(document).ready(function () {
     					if (e.lengthComputable) {
     						var chunkProgress = (e.loaded / e.total);
     						var fileProgress = (item.currentChunk + chunkProgress) / item.chunks;
-    						// 使用 slice(1) 排除当前正在上传的文件，避免进度重复计算
     						var completedProgress = queue.slice(1).reduce((sum, qItem) => sum + qItem.progress, 0);
     						var totalProgress = (completedProgress + fileProgress) / queue.length;
     						$('#uploadProgress').css('width', parseInt(totalProgress * 100) + '%').text(parseInt(totalProgress * 100) + '%');
@@ -181,4 +184,4 @@ $(document).ready(function () {
     }
 
     refreshFileList();
-}) 
+})
