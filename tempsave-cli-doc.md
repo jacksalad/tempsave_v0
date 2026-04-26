@@ -1,24 +1,68 @@
 # TempSave CLI 使用文档
 
-本文档介绍如何通过命令行（curl）操作 TempSave 临时网盘服务。
+本文档介绍如何通过命令行操作 TempSave 临时网盘服务，支持文件夹管理。
 
 ## 前提条件
 
 - 服务已启动（默认端口 8088）
-- 已安装 curl 工具
+- Go CLI 工具已构建：`go build -o tempsave-cli.exe ./cmd/tempsave-cli/`
+- 或使用 curl（需已安装）
 
-## 快速开始
+## 方法一：Go CLI 工具（推荐）
 
-### 1. 上传文件
+### 安装
 
 ```bash
-curl -X POST -F "file=@/path/to/file.txt" http://localhost:8088/upload-file
+cd cmd/tempsave-cli
+go build -o tempsave-cli.exe
+# 或直接构建到项目根目录
+go build -o tempsave-cli.exe ./cmd/tempsave-cli/
 ```
 
-**参数说明：**
-- `-X POST` - 使用 POST 方法
-- `-F "file=@/path/to/file.txt"` - 指定要上传的文件（`@` 符号表示读取文件）
-- `http://localhost:8088/upload-file` - 上传接口地址
+### 基本用法
+
+```bash
+# 设置服务器地址（默认 http://localhost:8088）
+# 方式1：--server 参数
+tempsave-cli --server http://192.168.1.100:8088 ls
+
+# 方式2：环境变量
+export TESERVER=http://192.168.1.100:8088
+tempsave-cli ls
+```
+
+### 命令参考
+
+#### 1. 列出文件/文件夹 `ls [dir]`
+
+```bash
+# 列出根目录
+tempsave-cli ls
+
+# 列出子目录
+tempsave-cli ls myfolder
+tempsave-cli ls "myfolder/subfolder"
+```
+
+**输出示例：**
+```
+Type Name                            Time                 Size
+--------------------------------------------------------------------------------
+DIR  myfolder                        2026-04-27 3:45PM
+FILE document.pdf                    2026-04-27 2:30PM     2.35 MB
+FILE image.png                       2026-04-27 1:00PM    156.78 KB
+```
+
+#### 2. 上传文件 `upload <filepath> [dir]`
+
+```bash
+# 上传到根目录
+tempsave-cli upload file.txt
+
+# 上传到指定目录（目录不存在会自动创建）
+tempsave-cli upload file.txt myfolder
+tempsave-cli upload large_file.zip "myfolder/subfolder"
+```
 
 **成功响应：**
 ```json
@@ -31,174 +75,153 @@ curl -X POST -F "file=@/path/to/file.txt" http://localhost:8088/upload-file
 }
 ```
 
-**失败响应（空间不足）：**
-```json
-{
-  "ok": false,
-  "message": "空间不足！需要 500.00 MB，剩余 200.00 MB",
-  "requiredSize": 524288000,
-  "availableSize": 209715200
-}
+#### 3. 下载文件 `download <name> [dir]`
+
+```bash
+# 从根目录下载
+tempsave-cli download file.txt
+
+# 从子目录下载
+tempsave-cli download file.txt myfolder
+```
+
+#### 4. 删除文件 `del <name> [dir]`
+
+```bash
+# 删除根目录文件
+tempsave-cli del file.txt
+
+# 删除子目录文件
+tempsave-cli del file.txt myfolder
+```
+
+#### 5. 创建文件夹 `mkdir <dir>`
+
+```bash
+# 创建一级目录
+tempsave-cli mkdir newfolder
+
+# 创建多级目录
+tempsave-cli mkdir "parent/child/grandchild"
+```
+
+#### 6. 删除文件夹 `rmdir <dir>`
+
+```bash
+# 删除空文件夹
+tempsave-cli rmdir emptyfolder
+
+# 注意：文件夹不为空时会删除失败
+```
+
+#### 7. 查看存储使用情况 `df`
+
+```bash
+tempsave-cli df
+# 输出: Used: 512.0 MB / 1.0 GB (50.0%)
+```
+
+## 方法二：curl 命令
+
+### 1. 上传文件
+
+```bash
+# 上传到根目录
+curl -X POST -F "file=@/path/to/file.txt" http://localhost:8088/upload-file
+
+# 上传到子目录
+curl -X POST -F "file=@file.txt" -F "dir=myfolder" http://localhost:8088/upload-file
+
+# 上传到多级子目录
+curl -X POST -F "file=@file.txt" -F "dir=myfolder/subfolder" http://localhost:8088/upload-file
 ```
 
 ### 2. 获取文件列表
 
 ```bash
-# 获取文件列表（默认最多 5 个）
+# 获取根目录文件列表（默认最多 5 个）
 curl http://localhost:8088/files
 
-# 获取所有文件列表
+# 获取根目录所有文件
 curl http://localhost:8088/files?limit=all
-```
 
-**响应示例：**
-```json
-[
-  {
-    "name": "document.pdf",
-    "time": "2026-03-22 3:45PM",
-    "size": "2.35 MB"
-  },
-  {
-    "name": "image.png",
-    "time": "2026-03-22 2:30PM",
-    "size": "156.78 KB"
-  }
-]
+# 获取子目录文件列表
+curl "http://localhost:8088/files?limit=all&dir=myfolder"
 ```
 
 ### 3. 下载文件
 
 ```bash
-# 下载并保存为原文件名
+# 下载根目录文件
 curl -O http://localhost:8088/uploads/file.txt
 
-# 下载并指定保存文件名
-curl -o my_file.txt http://localhost:8088/uploads/file.txt
+# 下载子目录文件
+curl -O http://localhost:8088/uploads/myfolder/file.txt
 ```
-
-**参数说明：**
-- `-O` - 使用服务器上的文件名保存
-- `-o <filename>` - 指定保存的文件名
 
 ### 4. 删除文件
 
 ```bash
-curl "http://localhost:8088/del?name=file.txt"
+# 删除根目录文件
+curl -X POST -d "name=file.txt" http://localhost:8088/del
+
+# 删除子目录文件
+curl -X POST -d "name=file.txt&dir=myfolder" http://localhost:8088/del
 ```
 
-**注意：** 文件名需要进行 URL 编码，如果文件名包含特殊字符或中文：
+### 5. 创建文件夹
 
 ```bash
-# 使用 --data-urlencode 自动编码
-curl -G "http://localhost:8088/del" --data-urlencode "name=文件 名.txt"
+# 一级目录
+curl -X POST -d "dir=newfolder" http://localhost:8088/mkdir
+
+# 多级目录
+curl -X POST -d "dir=parent/child" http://localhost:8088/mkdir
 ```
 
-**响应：**
-```
-file.txt deleted.
-```
-
-### 5. 检查存储空间
+### 6. 删除文件夹
 
 ```bash
+# 删除空文件夹
+curl -X POST -d "dir=emptyfolder" http://localhost:8088/rmdir
+```
+
+### 7. 检查存储空间
+
+```bash
+# 检查上传文件所需空间
 curl "http://localhost:8088/check-space?size=1048576&name=test.txt"
-```
 
-**参数说明：**
-- `size` - 要上传的文件大小（字节）
-- `name` - 文件名（用于检查是否覆盖同名文件）
-
-**空间充足响应：**
-```json
-{
-  "ok": true,
-  "message": "空间充足",
-  "currentSize": 524288000,
-  "availableSize": 524288000,
-  "maxSize": 1073741824
-}
-```
-
-**空间不足响应：**
-```json
-{
-  "ok": false,
-  "message": "空间不足！需要 100.00 MB，剩余 50.00 MB",
-  "currentSize": 1023410176,
-  "availableSize": 52428800,
-  "maxSize": 1073741824
-}
+# 检查上传到子目录所需空间
+curl "http://localhost:8088/check-space?size=1048576&name=test.txt&dir=myfolder"
 ```
 
 ## 完整 API 参考
 
 | 端点 | 方法 | 功能 | 参数 |
 |------|------|------|------|
-| `/upload-file` | POST | 上传文件 | `file` (multipart/form-data) |
-| `/files` | GET | 获取文件列表 | `limit` (query参数，默认5，设为all获取全部) |
-| `/uploads/<filename>` | GET | 下载文件 | 文件名在 URL 路径中 |
-| `/del` | GET | 删除文件 | `name` (query参数) |
-| `/check-space` | GET | 检查空间 | `size`, `name` (query参数) |
-
-## 高级用法
-
-### 批量上传文件
-
-```bash
-# 循环上传当前目录下所有 .txt 文件
-for file in *.txt; do
-  echo "Uploading $file..."
-  curl -X POST -F "file=@$file" http://localhost:8088/upload-file
-  echo
-done
-```
-
-### 显示上传进度
-
-```bash
-curl -X POST -F "file=@large_file.zip" --progress-bar http://localhost:8088/upload-file
-```
-
-### 上传并显示详细信息
-
-```bash
-curl -X POST -F "file=@file.txt" -w "\nHTTP Status: %{http_code}\nTime: %{time_total}s\n" http://localhost:8088/upload-file
-```
-
-### 使用变量配置服务器地址
-
-```bash
-SERVER="http://192.168.1.100:8088"
-
-# 上传
-curl -X POST -F "file=@file.txt" $SERVER/upload-file
-
-# 获取列表
-curl $SERVER/files
-```
-
-## 错误处理
-
-| HTTP 状态码 | 说明 |
-|------------|------|
-| 200 | 成功 |
-| 400 | 请求参数错误（缺少文件或无效文件） |
-| 405 | 方法不允许（如使用 GET 访问 POST 接口） |
-| 500 | 服务器内部错误 |
-| 507 | 存储空间不足 |
+| `/files` | GET | 获取文件列表 | `limit` (默认5, `all`=全部), `dir` (子目录) |
+| `/upload-file` | POST | 上传文件 | `file` (multipart), `dir` (目标目录，可选) |
+| `/uploads/<path>` | GET | 下载文件 | 文件路径（支持子目录） |
+| `/del` | POST | 删除文件 | `name`, `dir` (可选) |
+| `/mkdir` | POST | 创建文件夹 | `dir` (目录路径) |
+| `/rmdir` | POST | 删除文件夹 | `dir` (目录路径，必须为空) |
+| `/check-space` | GET | 检查空间 | `size`, `name`, `dir` (可选) |
 
 ## 存储限制
 
-- 最大总容量：**1 GB**
+- 最大总容量：**1 GB**（递归统计所有子目录）
 - 单个文件大小：无限制（受总容量限制）
 - 内存缓冲：32 MB（大文件自动流式写入）
 
 ## 注意事项
 
-1. **文件覆盖**：上传同名文件会自动覆盖旧文件
-2. **文件名编码**：包含特殊字符的文件名需要 URL 编码
-3. **网络超时**：大文件上传可能需要调整 curl 超时设置：
+1. **文件覆盖**：上传同名文件会自动覆盖旧文件（同一目录内）
+2. **文件夹删除**：只能删除空文件夹，删除前需先清空内部文件
+3. **路径安全**：不支持 `..` 路径穿越，不支持绝对路径
+4. **文件名编码**：包含特殊字符的文件名需要 URL 编码（CLI 工具自动处理）
+5. **网络超时**：大文件上传可能需要调整 curl 超时设置：
    ```bash
    curl --max-time 300 -X POST -F "file=@large_file.zip" http://localhost:8088/upload-file
    ```
+6. **路径中的空格**：包含空格的目录名需用引号包裹

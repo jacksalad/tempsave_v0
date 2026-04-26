@@ -34,3 +34,5 @@ uploads/
 tmp/
 temp/
 bk/
+
+.claude/settings.json
