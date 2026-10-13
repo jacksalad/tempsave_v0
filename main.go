@@ -285,6 +285,7 @@ func main() {
 	}
 	defer file.Close()
 	log.SetOutput(file)
+	initAccessLog() // 访问日志独立写 access.log（按大小轮转）
 
 	// 处理上传文件夹
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
@@ -299,14 +300,22 @@ func main() {
 	// 初始化大小缓存
 	initSizeCache()
 
-	// 设置静态资源目录
-	http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("src/assets"))))
-	// 设置上传文件目录
+	// 设置静态资源目录（带页面闸门：未授权访问一律按 404 处理，见 auth.go）
+	http.Handle("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if pageGate(w, r) {
+			return
+		}
+		http.StripPrefix("/assets/", http.FileServer(http.Dir("src/assets"))).ServeHTTP(w, r)
+	}))
+	// 设置上传文件目录（功能路由，不加闸门，保持原样）
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
-	// 主页路由
+	// 主页路由（带页面闸门：未授权只返回 src/404.html，见 auth.go）
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if pageGate(w, r) {
+			return
+		}
 		http.ServeFile(w, r, "src/index.html")
 		log.Println("【Enter】 Web is entered")
 	})
@@ -785,6 +794,9 @@ func main() {
 	log.Printf("【Start】 Server running at http://localhost:%s", portstring)
 	fmt.Printf("Server running at http://localhost:%s\n", portstring)
 	srv := &http.Server{
+		// 访问日志中间件包在整个 Mux 外：所有路由（页面/静态资源/全部接口）都会记录，
+		// 各 handler 本身未做任何改动，接口契约不变。
+		Handler:        accessLog(http.DefaultServeMux),
 		Addr:           "0.0.0.0:" + portstring,
 		ReadTimeout:    0,              // 不限制读超时（大文件上传需要长时间）
 		WriteTimeout:   120 * time.Second,
